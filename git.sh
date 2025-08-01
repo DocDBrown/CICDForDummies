@@ -5,7 +5,6 @@
 # Check for help request
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "Usage: $(basename "$0") [commit-message]"
-    echo "Run unit tests (excluding ./e2e_tests and ./integration_tests) and commit/push if they pass."
     echo "If no commit message is provided, uses 'passing tests' as default."
     exit 0
 fi
@@ -20,10 +19,9 @@ if [ -z "$MODULE" ]; then
     exit 1
 fi
 
-# Build list of test packages, excluding e2e_tests and integration_tests
-echo "Discovering test packages (excluding ./e2e_tests and ./integration_tests)..."
-mapfile -t PKGS < <(go list ./... | grep -v "^${MODULE}/e2e_tests" | grep -v "^${MODULE}/integration_tests")
-
+# Build list of test packages (now including all)
+echo "Discovering test packages..."
+mapfile -t PKGS < <(go list ./...)
 if [ ${#PKGS[@]} -eq 0 ]; then
     echo "No packages found to test."
     exit 1
@@ -31,14 +29,37 @@ fi
 
 # Run tests on found packages
 echo "Running tests on:"
-printf '  %s\n' "${PKGS[@]}"
+printf ' %s\n' "${PKGS[@]}"
 go test "${PKGS[@]}"
 TEST_RESULT=$?
 
 # Check test result
 if [ $TEST_RESULT -eq 0 ]; then
-    echo "All tests passed. Committing and pushing changes..."
+    echo "All tests passed. Linting code..."
+
+    # Format code using go fmt
+    echo "Running go fmt..."
+    go fmt ./...
+    FMT_RESULT=$?
+    if [ $FMT_RESULT -ne 0 ]; then
+        echo "Go fmt failed."
+        exit $FMT_RESULT
+    fi
+
+    # Run go vet for static analysis
+    echo "Running go vet..."
+    go vet
+    VET_RESULT=$?
+    if [ $VET_RESULT -ne 0 ]; then
+        echo "Go vet failed."
+        exit $VET_RESULT
+    fi
+
+    # Stage all changes (including formatted code)
     git add -A
+
+    # Commit and push
+    echo "Linting succeeded. Committing and pushing changes..."
     if git commit -m "$COMMIT_MSG" && git push; then
         echo "Successfully pushed changes."
         exit 0

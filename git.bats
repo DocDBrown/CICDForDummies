@@ -30,6 +30,8 @@ setup() {
 
     # Default test success
     export GO_TEST_RESULT=0
+    export GO_FMT_RESULT=0
+    export GO_VET_RESULT=0
 }
 
 teardown() {
@@ -51,9 +53,8 @@ case "$1" in
         elif [[ "$*" == *"./..."* ]]; then
             echo "mockmodule/utils"
             echo "mockmodule/api"
-            echo "mockmodule/e2e_setup_tests"
-            echo "mockmodule/e2e_setup_tests/integration"
-            echo "mockmodule/e2e_non_test_gen_tests"
+            echo "mockmodule/e2e_tests"
+            echo "mockmodule/integration_tests"
             exit 0
         else
             echo "unknown go list args: $*" >&2
@@ -63,6 +64,14 @@ case "$1" in
     "test")
         echo "go test $*" >&2
         exit "$GO_TEST_RESULT"
+        ;;
+    "fmt")
+        echo "go fmt $*" >&2
+        exit "$GO_FMT_RESULT"
+        ;;
+    "vet")
+        echo "go vet $*" >&2
+        exit "$GO_VET_RESULT"
         ;;
     *)
         echo "go $*" >&2
@@ -105,7 +114,7 @@ run_script() {
 }
 
 # -------------------------------
-# TEST: Success triggers git add, commit, push
+# TEST: Tests pass triggers git add, commit, push after linting
 # -------------------------------
 @test "TestsPassTriggersGitCommitAndPush" {
     export GO_TEST_RESULT=0
@@ -116,48 +125,8 @@ run_script() {
     [[ "$output" == *"git commit"* ]]
     [[ "$output" == *"git push"* ]]
     [[ "$output" == *"Successfully pushed changes"* ]]
-}
-
-# -------------------------------
-# TEST: e2e_tests and e2e_non_test_gen_tests are excluded from testing
-# -------------------------------
-@test "ExcludesE2ETestsFromTesting" {
-    export GO_TEST_RESULT=0
-    run_script
-
-    [ "$status" -eq 0 ]
-
-    # Confirm the test discovery phase ran
-    [[ "$output" == *"Discovering test packages"* ]]
-
-    # Critical: ensure e2e_tests and e2e_non_test_gen_tests packages are NOT passed to go test
-    # We allow "e2e_tests" or "e2e_non_test_gen_tests" in logs, but not in the go test command
-    for pkg in e2e_tests "mockmodule/e2e_tests" integration_tests "mockmodule/integration_tests"; do
-        if [[ "$output" == *"go test"* ]]; then
-            while IFS= read -r line; do
-                if [[ "$line" == go\ test* ]]; then
-                    [[ "$line" != *"$pkg"* ]]
-                fi
-            done <<< "$output"
-        fi
-    done
-
-    # Or simpler: check go test line explicitly
-    local go_test_line=""
-    while IFS= read -r line; do
-        if [[ "$line" == go\ test* ]]; then
-            go_test_line="$line"
-            break
-        fi
-    done <<< "$output"
-
-    [ -n "$go_test_line" ]
-    [[ "$go_test_line" != *"e2e_tests"* ]]
-    [[ "$go_test_line" != *"integration_tests"* ]]
-
-    # Should include expected packages
-    [[ "$output" == *"mockmodule/utils"* ]]
-    [[ "$output" == *"mockmodule/api"* ]]
+    [[ "$output" == *"Running go fmt..."* ]]
+    [[ "$output" == *"Running go vet..."* ]]
 }
 
 # -------------------------------
@@ -172,4 +141,35 @@ run_script() {
     [[ ! "$output" == *"git commit"* ]]
     [[ ! "$output" == *"git push"* ]]
     [[ "$output" == *"Tests failed. Aborting commit and push."* ]]
+}
+
+# -------------------------------
+# TEST: go fmt failure aborts commit
+# -------------------------------
+@test "GoFmtFailsAbortsCommit" {
+    export GO_TEST_RESULT=0
+    export GO_FMT_RESULT=1
+    run_script
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Go fmt failed."* ]]
+    [[ ! "$output" == *"git add -A"* ]]
+    [[ ! "$output" == *"git commit"* ]]
+    [[ ! "$output" == *"git push"* ]]
+}
+
+# -------------------------------
+# TEST: go vet failure aborts commit
+# -------------------------------
+@test "GoVetFailsAbortsCommit" {
+    export GO_TEST_RESULT=0
+    export GO_FMT_RESULT=0
+    export GO_VET_RESULT=1
+    run_script
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Go vet failed."* ]]
+    [[ ! "$output" == *"git add -A"* ]]
+    [[ ! "$output" == *"git commit"* ]]
+    [[ ! "$output" == *"git push"* ]]
 }
