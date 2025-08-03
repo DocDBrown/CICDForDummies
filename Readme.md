@@ -1,7 +1,6 @@
 # Fast CI CD
 
-To speed up Continuous Integration and Continuous Delivery see the example shell script and bats test file example
+Example to speed up Continuous Integration and Continuous Delivery for Gitea and Kubernetes:
+- go-ci.sh is for golang continuous integration for gitea
+- go-ci.bats is test file to validate go-ci.sh functionality
 
-Criticisms of DevOps:
-- Dont ship a product if its not up to standards
-- You cannot move to the next step unless the preceeding step is accurate, otherwise you are multipying errors
